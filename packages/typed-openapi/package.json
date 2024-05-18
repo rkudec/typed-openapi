@@ -23,7 +23,7 @@
     "@apidevtools/swagger-parser": "^10.1.0",
     "@changesets/cli": "^2.26.2",
     "@sinclair/typebox-codegen": "^0.8.5",
-    "arktype": "1.0.18-alpha",
+    "zod": "^3.23.8",
     "cac": "^6.7.14",
     "openapi3-ts": "^4.1.2",
     "pastable": "^2.2.1",
@@ -51,12 +51,7 @@
     "generator",
     "runtime",
     "typesafe",
-    "zod",
-    "arktype",
-    "typebox",
-    "valibot",
-    "yup",
-    "io-ts"
+    "zod"
   ],
   "sideEffects": false,
   "publishConfig": {

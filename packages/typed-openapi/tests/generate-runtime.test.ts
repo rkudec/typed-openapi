@@ -11,11 +11,8 @@ samples.forEach((sample) => {
     const filePath = `${__dirname}/samples/${sample}.yaml`;
     const openApiDoc = (await SwaggerParser.parse(filePath)) as OpenAPIObject;
     const ctx = mapOpenApiEndpoints(openApiDoc);
-    const { string: runtimes } = allowedRuntimes.node as { string: Array<{ value: string }> };
 
-    runtimes.forEach(({ value: runtime }) => {
-      if (runtime === "arktype" && sample === "docker.openapi") return;
-
+    allowedRuntimes.options.forEach((runtime) => {
       test(`generate ${runtime}`, () => {
         const tsRouter = generateFile({ ...ctx, runtime: runtime as any });
         const runtimeName = runtime === "none" ? "client" : runtime;

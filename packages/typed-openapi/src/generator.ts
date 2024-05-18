@@ -5,7 +5,7 @@ import { mapOpenApiEndpoints } from "./map-openapi-endpoints";
 import { AnyBox, AnyBoxDef } from "./types";
 import * as Codegen from "@sinclair/typebox-codegen";
 import { match } from "ts-pattern";
-import { type } from "arktype";
+import { z } from "zod";
 import { wrapWithQuotesIfNeeded } from "./string-utils";
 
 type GeneratorOptions = ReturnType<typeof mapOpenApiEndpoints> & {
@@ -13,28 +13,18 @@ type GeneratorOptions = ReturnType<typeof mapOpenApiEndpoints> & {
 };
 type GeneratorContext = Required<GeneratorOptions>;
 
-export const allowedRuntimes = type("'none' | 'arktype' | 'io-ts' | 'typebox' | 'valibot' | 'yup' | 'zod'");
-export type OutputRuntime = typeof allowedRuntimes.infer;
+export const allowedRuntimes = z.enum(["none", "zod"]);
+export type OutputRuntime = z.infer<typeof allowedRuntimes>;
 
 // TODO validate response schemas in sample fetch ApiClient
 // also, check that we can easily retrieve the response schema from the Fetcher
 
 const runtimeValidationGenerator = {
-  arktype: Codegen.ModelToArkType.Generate,
-  "io-ts": Codegen.ModelToIoTs.Generate,
-  typebox: Codegen.ModelToTypeBox.Generate,
-  valibot: Codegen.ModelToValibot.Generate,
-  yup: Codegen.ModelToYup.Generate,
   zod: Codegen.ModelToZod.Generate,
 };
 
 const inferByRuntime = {
   none: (input: string) => input,
-  arktype: (input: string) => `${input}["infer"]`,
-  "io-ts": (input: string) => `t.TypeOf<${input}>`,
-  typebox: (input: string) => `Static<${input}>`,
-  valibot: (input: string) => `v.Output<${input}>`,
-  yup: (input: string) => `y.InferType<${input}>`,
   zod: (input: string) => `z.infer<${input}>`,
 };
 
@@ -43,10 +33,6 @@ const methodsRegex = new RegExp(`(?:${methods.join("|")})_`);
 const endpointExport = new RegExp(`export (?:type|const) (?:${methodsRegex.source})`);
 
 const replacerByRuntime = {
-  yup: (line: string) =>
-    line
-      .replace(/y\.InferType<\s*?typeof (.*?)\s*?>/g, "typeof $1")
-      .replace(new RegExp(`(${endpointExport.source})` + new RegExp(/(.*? )(y\.object)(\()/).source, "g"), "$1$2("),
   zod: (line: string) =>
     line
       .replace(/z\.infer<\s*?typeof (.*?)\s*?>/g, "typeof $1")
@@ -66,9 +52,7 @@ export const generateFile = (options: GeneratorOptions) => {
       : (file: string) => {
           const model = Codegen.TypeScriptToModel.Generate(file);
           const transformer = runtimeValidationGenerator[ctx.runtime as Exclude<typeof ctx.runtime, "none">];
-          // tmp fix for typebox, there's currently a "// todo" only with Codegen.ModelToTypeBox.Generate
-          // https://github.com/sinclairzx81/typebox-codegen/blob/44d44d55932371b69f349331b1c8a60f5d760d9e/src/model/model-to-typebox.ts#L31
-          const generated = ctx.runtime === "typebox" ? Codegen.TypeScriptToTypeBox.Generate(file) : transformer(model);
+          const generated = transformer(model);
 
           let converted = "";
           const match = generated.match(/(const __ENDPOINTS_START__ =)([\s\S]*?)(export type __ENDPOINTS_END__)/);
@@ -286,15 +270,14 @@ export class ApiClient {
     ${method}<Path extends keyof ${capitalizedMethod}Endpoints, TEndpoint extends ${capitalizedMethod}Endpoints[Path]>(
       path: Path,
       ...params: MaybeOptionalArg<${match(ctx.runtime)
-        .with("zod", "yup", () => infer(`TEndpoint["parameters"]`))
-        .with("arktype", "io-ts", "typebox", "valibot", () => infer(`TEndpoint`) + `["parameters"]`)
+        .with("zod", () => infer(`TEndpoint["parameters"]`))
         .otherwise(() => `TEndpoint["parameters"]`)}>
     ): Promise<${match(ctx.runtime)
-      .with("zod", "yup", () => infer(`TEndpoint["response"]`))
-      .with("arktype", "io-ts", "typebox", "valibot", () => infer(`TEndpoint`) + `["response"]`)
+      .with("zod", () => infer(`TEndpoint["response"]`))
       .otherwise(() => `TEndpoint["response"]`)}> {
       return this.fetcher("${method}", this.baseUrl + path, params[0])${match(ctx.runtime)
-          .with("zod", () => `as Promise<${infer(`TEndpoint["response"]`)}>`).otherwise(() => ``)};
+            .with("zod", () => `as Promise<${infer(`TEndpoint["response"]`)}>`)
+            .otherwise(() => ``)};
     }
     // </ApiClient.${method}>
     `
